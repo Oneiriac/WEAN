@@ -1,28 +1,24 @@
-from typing import Iterator, List, Dict
-import torch
-import torch.optim as optim
-import numpy as np
-import os
-import time
 import argparse
 import json
+import os
+import time
 from pathlib import Path
+from typing import Iterator, List, Dict
+
+import torch
+import torch.optim as optim
 from allennlp.data import Instance
-from allennlp.data.fields import TextField
 from allennlp.data.dataset_readers import DatasetReader
+from allennlp.data.fields import TextField
+from allennlp.data.iterators import BucketIterator, BasicIterator
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.tokenizers import Token
 from allennlp.data.vocabulary import Vocabulary
-from allennlp.models import Model
-from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
-from allennlp.training.metrics import CategoricalAccuracy
-from allennlp.data.iterators import BucketIterator, BasicIterator
-from trainer import Trainer
 from allennlp.nn import util
-from allennlp.common.tqdm import Tqdm
-from metrics import SequenceAccuracy, calc_bleu_score
+
 from models.seq2seq import Seq2Seq
 from predictor import Predictor
+from trainer import Trainer
 
 parser = argparse.ArgumentParser(description='train.py')
 parser.add_argument('-emb_size', type=int, default=256, help="Embedding size")
@@ -40,7 +36,7 @@ parser.add_argument('-ema_decay', type=float, default=1.000, help="Moving Averag
 parser.add_argument('-dropout', type=float, default=0.4, help="Dropout rate")
 parser.add_argument('-label_smoothing', type=float, default=0.0, help="Dropout rate")
 parser.add_argument('-restore', type=str, default='', help="Restoring model path")
-parser.add_argument('-mode', type=str, default='train', help="Train or test")
+parser.add_argument('-mode', type=str, default='train', help="Train, test or create_vocab")
 parser.add_argument('-dir', type=str, default='', help="Checkpoint directory")
 parser.add_argument('-max_len', type=int, default=50, help="Limited length for text")
 parser.add_argument('-max_step', type=int, default=50, help="Max decoding step")
@@ -53,7 +49,7 @@ torch.manual_seed(1234)
 torch.cuda.manual_seed(1234)
 torch.cuda.set_device(opt.gpu)
 
-data_path = os.path.expanduser('/data/data-simplification/wikismall/')
+data_path = os.path.expanduser('./data/data-simplification/wikismall/')
 
 train_path, dev_path = os.path.join(data_path, 'train.jsonl'), os.path.join(data_path, 'dev.jsonl')
 test_path = os.path.join(data_path, 'test.jsonl')
@@ -102,7 +98,6 @@ class PWKPReader(DatasetReader):
             for line in f:
                 pairs = json.loads(line)
                 yield pairs
-
 
 
 def train():
@@ -197,9 +192,22 @@ def evaluate():
     predictor.evaluate(model)
 
 
+def create_vocab():
+    reader = PWKPReader()
+    train_dataset = reader.read(train_path)
+    if os.path.exists(vocab_dir):
+        print(f"Vocabulary already exists in {vocab_dir}.")
+    else:
+        print(f"Creating Vocabulary in in {vocab_dir}.")
+        vocab = Vocabulary.from_instances(instances=train_dataset,
+                                          max_vocab_size=opt.vocab_size)
+        vocab.save_to_files(vocab_dir)
+
 
 if __name__ == '__main__':
     if opt.mode == 'train':
         train()
+    elif opt.mode in ('vocab', 'create_vocab'):
+        create_vocab()
     else:
         evaluate()

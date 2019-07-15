@@ -8,31 +8,31 @@ rather than instantiating a ``Trainer`` yourself.
 """
 # pylint: disable=too-many-lines
 
+import datetime
 import logging
 import os
+import re
 import shutil
 import time
-import re
-import datetime
 import traceback
 from typing import Dict, Optional, List, Tuple, Union, Iterable, Any, Set
 
 import torch
 import torch.optim.lr_scheduler
-from torch.nn.parallel import replicate, parallel_apply
-from torch.nn.parallel.scatter_gather import gather
-from tensorboardX import SummaryWriter
-
 from allennlp.common import Params, Registrable
-from allennlp.common.checks import ConfigurationError
-from allennlp.common.util import dump_metrics, gpu_memory_mb, parse_cuda_device, peak_memory_mb, scatter_kwargs
+from allennlp.common.checks import ConfigurationError, parse_cuda_device
 from allennlp.common.tqdm import Tqdm
+from allennlp.common.util import dump_metrics, gpu_memory_mb, peak_memory_mb
 from allennlp.data.instance import Instance
 from allennlp.data.iterators.data_iterator import DataIterator
 from allennlp.models.model import Model
 from allennlp.nn import util
 from allennlp.training.learning_rate_schedulers import LearningRateScheduler
 from allennlp.training.optimizers import Optimizer
+from tensorboardX import SummaryWriter
+from torch.nn.parallel import replicate, parallel_apply
+from torch.nn.parallel.scatter_gather import gather, scatter_kwargs
+
 from modules.ema import EMA
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name

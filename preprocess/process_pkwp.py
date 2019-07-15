@@ -1,13 +1,13 @@
 import sys
 sys.path.append('../')
-import re
 import json
 import os
-from typing import List, Dict, Iterator
+from typing import List, Dict
 from utils import jsonl
 import torchfile
 
-pwkp_data_path = os.path.expanduser('/data/data-simplification/wikismall/')
+pwkp_data_path = os.path.expanduser('../data/data-simplification/wikismall/')
+
 
 def transform(path: str) -> List[Dict]:
     source_datas = open(path+'.src', 'r').read().strip().split('\n')
@@ -18,6 +18,7 @@ def transform(path: str) -> List[Dict]:
         datas.append({'source': s.lower(), 'target': t.lower()})
     
     return datas
+
 
 def get_aner_map(path: str) -> List:
     datas = torchfile.load(path, utf8_decode_strings=True)
