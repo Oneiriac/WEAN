@@ -2,11 +2,13 @@ import argparse
 import json
 import os
 import time
+import re
 from pathlib import Path
-from typing import Iterator, List, Dict
+from typing import Iterator, List, Dict, Any
 
 import torch
 import torch.optim as optim
+from allennlp.common import JsonDict
 from allennlp.data import Instance
 from allennlp.data.dataset_readers import DatasetReader
 from allennlp.data.fields import TextField
@@ -15,6 +17,7 @@ from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.tokenizers import Token
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.nn import util
+from allennlp.predictors import Seq2SeqPredictor
 
 from models.seq2seq import Seq2Seq
 from predictor import Predictor
@@ -92,7 +95,7 @@ class PWKPReader(DatasetReader):
                 src = [Token(word) for word in src]
                 tgt = [Token(word) for word in tgt]
                 yield self.text_to_instance(src, tgt)
-    
+
     def read_raw(self, file_path: str) -> Iterator[Dict]:
         with open(file_path) as f:
             for line in f:
@@ -180,7 +183,8 @@ def evaluate():
     model_state = torch.load(opt.restore, map_location=util.device_mapping(-1))
     model.load_state_dict(model_state)
 
-    predictor = Predictor(iterator=iterator,
+    predictor = Predictor(model=model,
+                          iterator=iterator,
                           max_decoding_step=opt.max_step,
                           vocab=vocab,
                           reader=reader,
@@ -189,7 +193,7 @@ def evaluate():
                           map_path=ner_path,
                           cuda_device=opt.gpu)
     
-    predictor.evaluate(model)
+    predictor.evaluate()
 
 
 def create_vocab():
@@ -204,10 +208,60 @@ def create_vocab():
         vocab.save_to_files(vocab_dir)
 
 
+def paraphrase():
+    reader = PWKPReader()
+    vocab = Vocabulary.from_files(vocab_dir)
+    iterator = BasicIterator(batch_size=1)
+    iterator.index_with(vocab)
+
+    model = Seq2Seq(emb_size=opt.emb_size,
+                    hidden_size=opt.hidden_size,
+                    enc_layers = opt.enc_layers,
+                    dec_layers = opt.dec_layers,
+                    dropout=opt.dropout,
+                    bidirectional=opt.bidirectional,
+                    beam_size=opt.beam_size,
+                    label_smoothing=opt.label_smoothing,
+                    vocab=vocab)
+
+    model = model.cuda(opt.gpu)
+    model_state = torch.load(opt.restore, map_location=util.device_mapping(-1))
+    model.load_state_dict(model_state)
+
+    def predict(batch, words):
+        model.eval()
+        batch = util.move_to_device(batch, opt.gpu)
+
+        vocabulary = vocab.get_index_to_token_vocabulary('tokens')
+        src = batch['src']
+        output_dict = model.predict(src, max_decoding_step=opt.max_step)
+
+        pred_sent = list(map(vocabulary.get, output_dict['output_ids'][0]))
+        if '@@EOS@@' in pred_sent:
+            pred_sent = pred_sent[:pred_sent.index('@@EOS@@')]
+
+        for j in range(len(pred_sent)):
+            if pred_sent[j] == '@@UNKNOWN@@' and output_dict['alignments'][0][j] < len(words):
+                pred_sent[j] = words[output_dict['alignments'][0][j]]
+
+        model.train()
+        return pred_sent
+
+    while True:
+        my_input = input("Enter a phrase to paraphrase: ")
+        my_input = re.sub('([.,!?()\'])', r' \1 ', my_input).strip().lower().split()
+        instances = [Instance({"src": TextField([Token(word) for word in my_input], reader.token_indexers)})]
+        input_generator = iterator(instances)
+        output_dict = predict(next(input_generator), my_input)
+        print(output_dict)
+
+
 if __name__ == '__main__':
     if opt.mode == 'train':
         train()
     elif opt.mode in ('vocab', 'create_vocab'):
         create_vocab()
+    elif opt.mode == 'paraphrase':
+        paraphrase()
     else:
         evaluate()

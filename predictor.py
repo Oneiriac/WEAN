@@ -15,6 +15,7 @@ from metrics import calc_bleu_score
 class Predictor(Registrable):
 
     def __init__(self,
+                 model: Model,
                  iterator: DataIterator,
                  max_decoding_step: int,
                  vocab: Vocabulary,
@@ -23,7 +24,7 @@ class Predictor(Registrable):
                  log_dir: str,
                  map_path: str = None,
                  cuda_device: Union[int, List] = -1) -> None:
-
+        self.model = model
         self.iterator = iterator
         self.max_decoding_step = max_decoding_step
         self.vocab = vocab
@@ -47,8 +48,8 @@ class Predictor(Registrable):
 
         return ' '.join(_words)
 
-    def evaluate(self, model: Model):
-        model.eval()
+    def evaluate(self):
+        self.model.eval()
 
         val_generator = self.iterator(self.dataset,
                                       num_epochs=1,
@@ -67,7 +68,7 @@ class Predictor(Registrable):
         for batch in val_generator_tqdm:
             batch = util.move_to_device(batch, self.cuda_device)
 
-            output_dict = model.predict(batch['src'], max_decoding_step=self.max_decoding_step)
+            output_dict = self.model.predict(batch['src'], max_decoding_step=self.max_decoding_step)
             alignments += output_dict['alignments']
 
             for pred in output_dict['output_ids']:
@@ -91,6 +92,4 @@ class Predictor(Registrable):
 
         score = {}
         score['bleu'] = calc_bleu_score(predictions, references, self.log_dir)
-        model.train()
-
-        return score
+        self.model.train()
